@@ -1,10 +1,10 @@
 """
 Helpers to use [cachetools](https://github.com/tkem/cachetools) with
-asyncio.
+async.
 """
-import asyncio
+
 import functools
-from contextlib import AbstractContextManager
+from contextlib import AbstractContextManager, suppress
 from typing import Any, Callable, MutableMapping, Optional, Protocol, TypeVar
 
 from cachetools import keys
@@ -64,49 +64,17 @@ def cached(
     lock = lock or NullContext()
 
     def decorator(func):
-        if asyncio.iscoroutinefunction(func):
+        async def wrapper(*args, **kwargs):
+            k = key(*args, **kwargs)
+            with suppress(KeyError):
+                async with lock:
+                    return cache[k]
+            val = await func(*args, **kwargs)
 
-            async def wrapper(*args, **kwargs):
-                k = key(*args, **kwargs)
-                try:
-                    async with lock:
-                        return cache[k]
-
-                except KeyError:
-                    pass  # key not found
-
-                val = await func(*args, **kwargs)
-
-                try:
-                    async with lock:
-                        cache[k] = val
-
-                except ValueError:
-                    pass  # val too large
-
-                return val
-
-        else:
-
-            def wrapper(*args, **kwargs):
-                k = key(*args, **kwargs)
-                try:
-                    with lock:
-                        return cache[k]
-
-                except KeyError:
-                    pass  # key not found
-
-                val = func(*args, **kwargs)
-
-                try:
-                    with lock:
-                        cache[k] = val
-
-                except ValueError:
-                    pass  # val too large
-
-                return val
+            with suppress(ValueError):
+                async with lock:
+                    cache[k] = val
+            return val
 
         return functools.wraps(func)(wrapper)
 
@@ -128,57 +96,23 @@ def cachedmethod(
     lock = lock or (lambda _: NullContext())
 
     def decorator(method):
-        if asyncio.iscoroutinefunction(method):
+        async def wrapper(self, *args, **kwargs):
+            method_cache = cache(self)
+            if method_cache is None:
+                return await method(self, *args, **kwargs)
 
-            async def wrapper(self, *args, **kwargs):
-                method_cache = cache(self)
-                if method_cache is None:
-                    return await method(self, *args, **kwargs)
+            k = key(self, *args, **kwargs)
+            with suppress(KeyError):
+                async with lock(self):
+                    return method_cache[k]
 
-                k = key(self, *args, **kwargs)
-                try:
-                    async with lock(self):
-                        return method_cache[k]
+            val = await method(self, *args, **kwargs)
 
-                except KeyError:
-                    pass  # key not found
+            with suppress(ValueError):  # val too large
+                async with lock(self):
+                    method_cache[k] = val
 
-                val = await method(self, *args, **kwargs)
-
-                try:
-                    async with lock(self):
-                        method_cache[k] = val
-
-                except ValueError:
-                    pass  # val too large
-
-                return val
-
-        else:
-
-            def wrapper(self, *args, **kwargs):
-                method_cache = cache(self)
-                if method_cache is None:
-                    return method(self, *args, **kwargs)
-
-                k = key(*args, **kwargs)
-                try:
-                    with lock(self):
-                        return method_cache[k]
-
-                except KeyError:
-                    pass  # key not found
-
-                val = method(self, *args, **kwargs)
-
-                try:
-                    with lock(self):
-                        method_cache[k] = val
-
-                except ValueError:
-                    pass  # val too large
-
-                return val
+            return val
 
         return functools.wraps(method)(wrapper)
 

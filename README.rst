@@ -1,7 +1,7 @@
 asyncache
 #########
 
-Helpers to use cachetools with asyncio.
+Helpers to use cachetools with async.
 
 .. image:: https://img.shields.io/pypi/v/asyncache
    :target: https://pypi.org/project/asyncache/
