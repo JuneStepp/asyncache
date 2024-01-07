@@ -1,6 +1,8 @@
 asyncache
 #########
 
+This fork removes sync support, so any async library can be used.
+
 Helpers to use cachetools with async.
 
 .. image:: https://img.shields.io/pypi/v/asyncache
